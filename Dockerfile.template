@@ -1,33 +1,55 @@
 # Built using https://coral.withgoogle.com/tutorials/accelerator/
 #FROM balenalib/%%BALENA_MACHINE_NAME%%-debian-python
-FROM balenalib/raspberrypi3-64-debian:bookworm-build
+ARG DISTRO=bookworm
+FROM balenalib/raspberrypi3-64-debian:${DISTRO}-build
 
 # Need udev for some dynamic dev nodes
 ENV UDEV=1
 
 WORKDIR /usr/src
 
-RUN echo "deb-src http://archive.raspberrypi.org/debian bullseye main ui" >> /etc/apt/sources.list.d/raspi.list
+
 # Install some utilities we will need
-RUN apt-get update && \
-    apt-get -qqy install build-essential wget curl feh ffmpeg git make \
-        python3-picamera2 python3-libcamera libcamera-apps libcamera-dev apt-utils libraspberrypi-dev && \
-    apt-get build-dep -y ffmpeg && \
-    apt-get source ffmpeg=$(apt-cache policy ffmpeg | grep -oP 'Installed: \K.*') && \
-    cd $(find . -maxdepth 1 -type d -name "ffmpeg-*" -print -quit)
+RUN apt-get update && apt-get -qqy install gpg
+
+RUN echo deb http://archive.raspberrypi.org/debian/ bookworm main | tee /etc/apt/sources.list.d/raspberrypi.list
+RUN wget -qO- http://keyserver.ubuntu.com/pks/lookup?op=get&search=82B129927FA3303E | tee /etc/apt/trusted.gpg.d/repo_key.gpg > /dev/null
+
+RUN gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 82B129927FA3303E
+RUN gpg --export 82B129927FA3303E | sudo tee /etc/apt/trusted.gpg.d/repo_key.gpg > /dev/null
+
+RUN apt-get update && apt-get -qqy install build-essential wget curl feh ffmpeg git make python3-pip \
+        python3-picamera2 python3-libcamera libcamera-apps libcamera-dev apt-utils libraspberrypi-dev \ 
+        python3-numpy python3-pil python3-pilkit libunwind8
+
+#RUN echo "deb-src http://archive.raspberrypi.org/debian bookworm main ui" >> /etc/apt/sources.list.d/raspi.list
+#RUN apt-get build-dep -y ffmpeg && \
+#    apt-get source ffmpeg=$(apt-cache policy ffmpeg | grep -oP 'Installed: \K.*') && \
+#    cd $(find . -maxdepth 1 -type d -name "ffmpeg-*" -print -quit)
 #    ./configure && \
 #    make
 
+ARG DISTRO=bookworm
+ARG LIBEDGETPU_VERSION=16.0tf2.16.1-1
+ARG TFLITE_RUNTIME_VERSION=2.17.0.post1
+ARG PYCORAL_VERSION=2.0.1
+
+ADD pycoral/ .
+
+RUN apt install ./debian-${DISTRO}/libedgetpu-dev_${LIBEDGETPU_VERSION}_arm64.deb \
+    ./debian-${DISTRO}/libedgetpu1-std_${LIBEDGETPU_VERSION}_arm64.deb \
+    ./debian-${DISTRO}/python3-tflite-runtime_${TFLITE_RUNTIME_VERSION}_arm64.deb \
+    ./debian-${DISTRO}/python3-pycoral_${PYCORAL_VERSION}_arm64.deb  
 
 # Set our working directory
 WORKDIR /usr/src/app
 
-COPY requirements.txt requirements.txt
-RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-    python3 get-pip.py && \
-    rm get-pip.py
-RUN python3 -m pip install -U pip
-RUN python3 -m pip install -U numpy
+#COPY requirements.txt requirements.txt
+#RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+#    python3 get-pip.py && \
+#    rm get-pip.py
+#RUN python3 -m pip install -U pip
+#RUN python3 -m pip install -U numpy
 
 # Fetch latest edge TPU libs
 RUN wget https://dl.google.com/coral/edgetpu_api/edgetpu_api_latest.tar.gz -O edgetpu_api.tar.gz --trust-server-names && \
@@ -37,17 +59,17 @@ WORKDIR /usr/src/app/edgetpu_api
 
 # Override the MODEL variable so we can build in a container.
 #ENV MODEL="Raspberry Pi 3 Model B Rev"
-RUN sed -i "s|MODEL=|#MODEL=|g" install.sh
+#RUN sed -i "s|MODEL=|#MODEL=|g" install.sh
 
 # Pass N to the prompt in the install script if we want to overclock the tpu
 #RUN yes n | ./install.sh
 
 WORKDIR /usr/src/app
-
+#
 COPY models/ models/
-
+#
 COPY src/ src/
-
+#
 COPY run.sh run.sh
 
 # Flip the camera vertically
